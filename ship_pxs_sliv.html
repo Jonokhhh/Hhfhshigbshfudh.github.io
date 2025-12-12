@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Космический кораблик</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #000;
+            font-family: monospace;
+            overflow: hidden;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 300px;
+            height: 450px;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            border: 2px solid #fff;
+            background-color: #000;
+        }
+        
+        #gameOver {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            z-index: 10;
+            cursor: pointer;
+            text-align: center;
+            line-height: 1.5;
+        }
+        
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            font-size: 16px;
+            font-weight: bold;
+            z-index: 5;
+        }
+        
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-size: 12px;
+            padding: 0 10px;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="50" height="75"></canvas>
+        <div id="score">Очков: 0</div>
+        <div id="gameOver">Game Over!<br><span style="font-size: 12px; margin-top: 10px;">Кликни для рестарта</span></div>
+        <div id="instructions">Стрелки ВВЕРХ/ВНИЗ для управления</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverScreen = document.getElementById('gameOver');
+        const scoreElement = document.getElementById('score');
+        
+        const GAME_WIDTH = 50;
+        const GAME_HEIGHT = 75;
+        const SHIP_WIDTH = 4;
+        const SHIP_HEIGHT = 4;
+        
+        let shipY = GAME_HEIGHT / 2 - SHIP_HEIGHT / 2;
+        let shipSpeed = 0;
+        const GRAVITY = 0.15;
+        const UP_ACCELERATION = -0.3;
+        const DOWN_ACCELERATION = 0.3;
+        const MAX_SPEED = 3.0;
+        
+        let keys = {
+            ArrowUp: false,
+            ArrowDown: false
+        };
+        
+        let balls = [];
+        let score = 0;
+        let gameRunning = true;
+        let frames = 0;
+        
+        let spawnRate = 80;
+        let baseSpawnRate = 80;
+        let minSpawnRate = 15;
+        let ballsPassed = 0;
+        
+        function drawShip() {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(10, shipY, SHIP_WIDTH, SHIP_HEIGHT);
+            ctx.fillRect(8, shipY + 1, 2, 2);
+            ctx.fillRect(14, shipY + 1, 2, 2);
+            
+            if (gameRunning) {
+                ctx.fillStyle = '#f00';
+                ctx.globalAlpha = 0.3;
+                ctx.fillRect(0, 0, GAME_WIDTH, 1);
+                ctx.fillRect(0, GAME_HEIGHT - 1, GAME_WIDTH, 1);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+        
+        function createBall() {
+            return {
+                x: GAME_WIDTH,
+                y: Math.random() * (GAME_HEIGHT - 4),
+                width: 2,
+                height: 2,
+                passed: false
+            };
+        }
+        
+        function drawBalls() {
+            ctx.fillStyle = '#fff';
+            for (let ball of balls) {
+                ctx.fillRect(ball.x, ball.y, ball.width, ball.height);
+            }
+        }
+        
+        function updateBalls() {
+            for (let i = balls.length - 1; i >= 0; i--) {
+                balls[i].x -= 1;
+                
+                if (balls[i].x + balls[i].width < 0) {
+                    balls.splice(i, 1);
+                }
+                else if (!balls[i].passed && balls[i].x + balls[i].width < 10) {
+                    balls[i].passed = true;
+                    score++;
+                    ballsPassed++;
+                    scoreElement.textContent = `Очков: ${score}`;
+                    
+                    if (ballsPassed % 100 === 0) {
+                        spawnRate = Math.max(minSpawnRate, baseSpawnRate - Math.floor(ballsPassed / 100) * 5);
+                    }
+                }
+            }
+            
+            if (frames % spawnRate === 0) {
+                balls.push(createBall());
+            }
+        }
+        
+        function checkCollisions() {
+            for (let ball of balls) {
+                if (10 < ball.x + ball.width &&
+                    10 + SHIP_WIDTH > ball.x &&
+                    shipY < ball.y + ball.height &&
+                    shipY + SHIP_HEIGHT > ball.y) {
+                    gameOver();
+                    return;
+                }
+            }
+            
+            if (shipY <= 0 || shipY + SHIP_HEIGHT >= GAME_HEIGHT) {
+                gameOver();
+            }
+        }
+        
+        function gameOver() {
+            gameRunning = false;
+            gameOverScreen.style.display = 'flex';
+        }
+        
+        function updateShip() {
+            if (!gameRunning) return;
+            
+            let acceleration = 0;
+            
+            if (keys.ArrowUp) {
+                acceleration += UP_ACCELERATION;
+            }
+            if (keys.ArrowDown) {
+                acceleration += DOWN_ACCELERATION;
+            }
+            
+            if (!keys.ArrowUp && !keys.ArrowDown) {
+                acceleration += GRAVITY;
+            }
+            
+            shipSpeed += acceleration;
+            shipSpeed = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, shipSpeed));
+            shipY += shipSpeed;
+        }
+        
+        function gameLoop() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            
+            if (gameRunning) {
+                updateShip();
+                updateBalls();
+                checkCollisions();
+                frames++;
+            }
+            
+            drawBalls();
+            drawShip();
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+            
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                keys[e.key] = true;
+                e.preventDefault();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                keys[e.key] = false;
+                e.preventDefault();
+            }
+        });
+        
+        gameLoop();
+        
+        let touchActive = false;
+        let touchDirection = 0;
+        
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameRunning) return;
+            e.preventDefault();
+            
+            touchActive = true;
+            const touchY = e.touches[0].clientY;
+            const canvasRect = canvas.getBoundingClientRect();
+            const canvasCenterY = canvasRect.top + canvasRect.height / 2;
+            
+            if (touchY < canvasCenterY) {
+                touchDirection = -1;
+                keys.ArrowUp = true;
+                keys.ArrowDown = false;
+            } else {
+                touchDirection = 1;
+                keys.ArrowDown = true;
+                keys.ArrowUp = false;
+            }
+        });
+        
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            touchActive = false;
+            keys.ArrowUp = false;
+            keys.ArrowDown = false;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            if (!gameRunning || !touchActive) return;
+            e.preventDefault();
+            
+            const touchY = e.touches[0].clientY;
+            const canvasRect = canvas.getBoundingClientRect();
+            const canvasCenterY = canvasRect.top + canvasRect.height / 2;
+            
+            if (touchY < canvasCenterY && touchDirection !== -1) {
+                touchDirection = -1;
+                keys.ArrowUp = true;
+                keys.ArrowDown = false;
+            } else if (touchY >= canvasCenterY && touchDirection !== 1) {
+                touchDirection = 1;
+                keys.ArrowDown = true;
+                keys.ArrowUp = false;
+            }
+        });
+        
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            return false;
+        });
+        
+        gameOverScreen.addEventListener('click', () => {
+            restartGame();
+        });
+        
+        function restartGame() {
+            balls = [];
+            shipY = GAME_HEIGHT / 2 - SHIP_HEIGHT / 2;
+            shipSpeed = 0;
+            score = 0;
+            ballsPassed = 0;
+            spawnRate = baseSpawnRate;
+            frames = 0;
+            gameRunning = true;
+            
+            keys.ArrowUp = false;
+            keys.ArrowDown = false;
+            touchActive = false;
+            touchDirection = 0;
+            
+            gameOverScreen.style.display = 'none';
+            scoreElement.textContent = 'Очков: 0';
+        }
+        
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning && (e.key === ' ' || e.key === 'Enter' || e.key === 'Spacebar')) {
+                restartGame();
+            }
+        });
+    </script>
+</body>
+</html>
